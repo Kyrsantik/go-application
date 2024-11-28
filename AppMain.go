@@ -1,40 +1,99 @@
 package main
 
 import (
+	"database/sql"
+	"fmt"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
-	"image/color"
+	_ "github.com/lib/pq"
+)
+
+const (
+	dbUser     = "your_db_user"     // Имя пользователя PostgreSQL
+	dbPassword = "your_db_password" // Пароль PostgreSQL
+	dbName     = "your_db_name"     // Имя базы данных PostgreSQL
 )
 
 func main() {
-	a := app.New()
-	w := a.NewWindow("Application")
+	// Инициализация приложения Fyne
+	myApp := app.New()
+	mainWindow := myApp.NewWindow("Приветствие")
+	mainWindow.Resize(fyne.NewSize(400, 300))
 
-	background := canvas.NewRectangle(color.NRGBA{R: 64, G: 58, B: 150, A: 58})
-	backgroundImage := canvas.NewImageFromFile("maxresdefault.jpg")
-	backgroundImage.FillMode = canvas.ImageFillOriginal
-	label := widget.NewLabel("i see you")
-	iconImage, _ := fyne.LoadResourceFromPath("unnamed.jpg")
-	w.SetIcon(iconImage)
-	w.SetContent(widget.NewLabel("xxxxxxxdddd"))
-	w.Resize(fyne.NewSize(800, 600))
-	//сделать кнопку
-	//залить на гит
-	//gray := color.RGBA{R: 200, G: 200, B: 200, A: 255}
-	btn := widget.NewButton("Click me", func() {
-		println("Button clicked")
-		w.Close()
+	// Установка серого фона
+	mainWindow.SetContent(container.NewVBox(
+		widget.NewLabel("Добро пожаловать!"),
+		widget.NewButton("Введите имя и пароль", func() {
+			openCredentialsWindow(myApp)
+		}),
+	))
+
+	mainWindow.ShowAndRun()
+}
+
+func openCredentialsWindow(myApp fyne.App) {
+	// Окно для ввода имени и пароля
+	credentialsWindow := myApp.NewWindow("Ввод имени и пароля")
+	credentialsWindow.Resize(fyne.NewSize(300, 200))
+
+	usernameEntry := widget.NewEntry()
+	usernameEntry.SetPlaceHolder("Введите имя пользователя")
+
+	passwordEntry := widget.NewPasswordEntry()
+	passwordEntry.SetPlaceHolder("Введите пароль")
+
+	submitButton := widget.NewButton("Сохранить", func() {
+		username := usernameEntry.Text
+		password := passwordEntry.Text
+
+		if username == "" || password == "" {
+			dialog.ShowInformation("Ошибка", "Имя пользователя и пароль не могут быть пустыми", credentialsWindow)
+			return
+		}
+
+		err := saveToDatabase(username, password)
+		if err != nil {
+			dialog.ShowError(err, credentialsWindow)
+		} else {
+			dialog.ShowInformation("Успех", "Данные сохранены успешно!", credentialsWindow)
+			credentialsWindow.Close()
+		}
 	})
 
-	content := container.NewMax(
-		btn,
-		background,
-		backgroundImage,
-		container.NewCenter(label),
-	)
-	w.SetContent(content)
-	w.ShowAndRun()
+	credentialsWindow.SetContent(container.NewVBox(
+		widget.NewLabel("Введите ваши данные:"),
+		usernameEntry,
+		passwordEntry,
+		submitButton,
+	))
+
+	credentialsWindow.Show()
+}
+
+func saveToDatabase(username, password string) error {
+	// Подключение к базе данных PostgreSQL
+	connStr := fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", dbUser, dbPassword, dbName)
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		return fmt.Errorf("ошибка подключения к базе данных: %w", err)
+	}
+	defer db.Close()
+
+	// Проверка подключения
+	if err = db.Ping(); err != nil {
+		return fmt.Errorf("ошибка проверки соединения с базой данных: %w", err)
+	}
+
+	// Вставка данных в базу
+	query := "INSERT INTO users (username, password) VALUES ($1, $2)"
+	_, err = db.Exec(query, username, password)
+	if err != nil {
+		return fmt.Errorf("ошибка сохранения данных: %w", err)
+	}
+
+	return nil
 }
